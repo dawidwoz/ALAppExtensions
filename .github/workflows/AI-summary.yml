@@ -1,0 +1,41 @@
+on: pull_request
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get diff
+        id: getDiff
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const diff_url = context.payload.pull_request.diff_url
+            const result = await github.request(diff_url)
+            console.log(result.data)
+            return result.data
+      - name: Prepare Request
+        id: prepareRequest
+        uses: fjogeleit/http-request-action@v1
+        if: steps.getDiff.outcome == 'success'
+        with:
+          url: "https://emeaopenai.azure-api.net/openai/deployments/gpt-35-turbo-16k/chat/completions?api-version=2023-07-01-preview" 
+          method: 'POST'
+          bearerToken: '${{ secrets.TOKEN_AI_AUTH }}'
+          customHeaders: '{"Content-Type": "application/json", "api-key": "${{ secrets.TOKEN_AI_AUTH }}"}'
+          data: '{"messages": [{ "role": "user", "content": "Answer to my next question acting as an experience Business Central developer" }],"temperature":0.7,"top_p":0.95,"frequency_penalty":0,"presence_penalty":0,"stop":null}'
+      - name: Make Request
+        id: myRequest
+        uses: fjogeleit/http-request-action@v1
+        if: steps.prepareRequest.outcome == 'success'
+        with:
+          url: "https://emeaopenai.azure-api.net/openai/deployments/gpt-35-turbo-16k/chat/completions?api-version=2023-07-01-preview" 
+          method: 'POST'
+          bearerToken: '${{ secrets.TOKEN_AI_AUTH }}'
+          customHeaders: '{"Content-Type": "application/json", "api-key": "${{ secrets.TOKEN_AI_AUTH }}"}'
+          data: '{"messages": [{ "role": "user", "content": ${{ steps.getDiff.outputs.result }} }],"temperature":0.7,"top_p":0.95,"frequency_penalty":0,"presence_penalty":0,"stop":null}'
+      - name: Add comment
+        uses: peter-evans/create-or-update-comment@5f728c3dae25f329afbe34ee4d08eef25569d79f
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ${{ fromJson(steps.myRequest.outputs.response).choices[0].message.content }}
